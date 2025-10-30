@@ -15,7 +15,7 @@
     </view>
 
     <!-- 打点按钮 -->
-    <view class="map-marker-btn">
+    <view class="map-marker-btn" v-if="config.defaultLayer === selectedLayerId">
       <view class="marker-btn" :class="{ active: isMarking }" @click="toggleMarking">
         <wd-icon name="location" size="16px"></wd-icon>
         <text class="marker-text">{{ isMarking ? '取消打点' : '开始打点' }}</text>
@@ -245,6 +245,7 @@ watch(() => selectedLayerId.value, (newLayerId) => {
       currentLayerId: newLayerId,
     }
   }
+  console.log('[Map] selectedLayerId changed:', newLayerId)
 })
 
 /**
@@ -278,13 +279,23 @@ function onDeptSelected(data: { value: string[], selectedItems: any[], nodeData:
     } as PolygonConfig
   }).filter((polygon: any) => polygon !== null) as PolygonConfig[]
 
+  // 切换部门时，先禁用打点模式，避免多边形点击被误触发打点
+  if (isMarking.value) {
+    isMarking.value = false
+    mapConfig.value = {
+      ...mapConfig.value,
+      type: 'disableMarking',
+    }
+  }
+
   // 更新地图配置，设置中心点和绘制多边形
   if (latLng) {
     mapConfig.value = {
       ...mapConfig.value,
       type: 'setCenter',
-      latitude: latLng[0],
-      longitude: latLng[1],
+      // parsePointToLatLng 返回的是 [lng, lat]，这里需要交换为 [lat, lng]
+      latitude: latLng[1],
+      longitude: latLng[0],
     }
   }
 
@@ -346,7 +357,11 @@ export default {
       currentZoom: 8,
       currentCenter: null, // 当前地图中心点 [lat, lng]
       currentMarker: null, // 当前打点的标记
-      markers: [], // 所有标记点（用户打点）
+      markers: [], // 所有标记点（历史数组，兼容旧逻辑）
+      /**
+       * 每个图层的唯一标记点映射：key 为 layerId，value 为 Leaflet Marker
+       */
+      markersByLayer: {},
       displayMarkers: [], // 回显的标记点
       singlePolyline: null, // 单条线
       multiplePolylines: [], // 多条线
@@ -356,7 +371,13 @@ export default {
       currentLayerId: 'hazard', // 当前选中的图层ID
       ownerInstance: null, // Vue 组件实例引用（用于回调）
       // 保存原始配置数据用于恢复
-      savedMarkersData: [], // 保存的标记点原始数据
+      /** 历史数组（兼容旧逻辑） */
+      savedMarkersData: [],
+      /**
+       * 保存的按图层存储的标记原始数据：
+       * { [layerId: string]: { lat, lng, layerId, iconUrl } }
+       */
+      savedMarkersByLayerData: {},
       savedDisplayMarkersData: [], // 保存的回显标记点原始数据
       savedSinglePolylineData: null, // 保存的单条线原始数据
       savedMultiplePolylinesData: [], // 保存的多条线原始数据
@@ -400,13 +421,16 @@ export default {
             this.currentLayerId = newValue.currentLayerId
           }
           this.enableMarkingMode()
+          console.log('[Map] updateMap -> enableMarking, currentLayerId:', this.currentLayerId)
         }
         else if (newValue.type === 'disableMarking') {
           this.disableMarkingMode()
+          console.log('[Map] updateMap -> disableMarking')
         }
         // 更新当前图层ID（需要在 disableMarking 之后，避免干扰 disableMarking 的处理）
         else if (newValue.currentLayerId && newValue.type !== 'disableMarking') {
           this.currentLayerId = newValue.currentLayerId
+          console.log('[Map] updateMap -> currentLayerId changed:', this.currentLayerId)
         }
         else if (newValue.type === 'showMarker') {
           this.savedDisplayMarkersData = [newValue.markerData]
@@ -484,6 +508,7 @@ export default {
     disableMarkingMode() {
       console.log('禁用打点模式')
       this.isMarkingMode = false
+      console.log('[Map] disableMarkingMode -> isMarkingMode:', this.isMarkingMode)
       // 移除地图点击事件监听 - 已注释，改为在多边形点击事件中打点
       // this.map.off('click', this.onMapClick)
       
@@ -573,7 +598,8 @@ export default {
      */
     createMarker(lat, lng) {
       // 根据当前图层ID获取对应的图标
-      const iconUrl = this.getIconByLayerId(this.currentLayerId)
+      const layerId = this.currentLayerId || 'default'
+      const iconUrl = this.getIconByLayerId(layerId)
       
       // 创建图标
       const icon = L.icon({
@@ -583,6 +609,15 @@ export default {
         popupAnchor: [0, -32], // 弹窗锚点
       })
       
+      // 如果该图层已存在标记，先移除
+      if (this.markersByLayer[layerId]) {
+        try {
+          this.map.removeLayer(this.markersByLayer[layerId])
+        } catch (e) {}
+        // 同步移除历史数组中的引用（兼容旧逻辑）
+        this.markers = this.markers.filter(m => m !== this.markersByLayer[layerId])
+      }
+
       // 创建标记点
       const marker = L.marker([lat, lng], {
         icon: icon,
@@ -592,21 +627,27 @@ export default {
       const markerData = {
         lat,
         lng,
-        layerId: this.currentLayerId, // 保存图层ID
+        layerId: layerId, // 保存图层ID
         iconUrl: iconUrl, // 保存图标URL
         address: `经度: ${lng.toFixed(6)}, 纬度: ${lat.toFixed(6)}`,
       }
+      // 兼容旧逻辑的数组（不再用于恢复，仅保留历史）
       this.savedMarkersData.push(markerData)
+      // 新的图层映射保存
+      this.savedMarkersByLayerData[layerId] = markerData
       
       // 保存标记
       this.currentMarker = marker
+      this.markersByLayer[layerId] = marker
       this.markers.push(marker)
       marker.on('click', () => {
         if (this.ownerInstance && this.ownerInstance.callMethod) {
           this.ownerInstance.callMethod('onMarkerConfirmed', markerData)
         }
       })
-      console.log('打点成功:', { lat, lng, 总标记数: this.markers.length })
+      console.log('[Map] 打点成功:', { lat, lng, layerId, 总标记数: this.markers.length })
+      console.log('[Map] markersByLayer keys:', Object.keys(this.markersByLayer || {}))
+      console.log('[Map] savedMarkersByLayerData:', this.savedMarkersByLayerData)
     },
 
     /**
@@ -1004,14 +1045,28 @@ export default {
     clearAll() {
       console.log('renderjs: 开始清除所有标记、线条和多边形')
       
-      // 清除用户打点的标记
+      // 清除用户打点的标记（历史数组）
       if (this.markers && this.markers.length > 0) {
-        console.log('清除用户打点标记:', this.markers.length, '个')
+        console.log('清除用户打点标记(历史):', this.markers.length, '个')
         this.markers.forEach(marker => {
           this.map.removeLayer(marker)
         })
         this.markers = []
       }
+
+      // 清除每图层的唯一标记
+      const layerIds = Object.keys(this.markersByLayer || {})
+      if (layerIds.length > 0) {
+        console.log('清除图层标记:', layerIds.length, '个图层')
+        layerIds.forEach((layerId) => {
+          const m = this.markersByLayer[layerId]
+          if (m) {
+            try { this.map.removeLayer(m) } catch (e) {}
+          }
+        })
+      }
+      this.markersByLayer = {}
+      this.savedMarkersByLayerData = {}
       
       if (this.currentMarker) {
         console.log('清除当前标记')
@@ -1095,33 +1150,44 @@ export default {
         // 恢复视图状态
         this.restoreMapViewState()
         
-        // 恢复用户打点的标记（优先恢复，因为这些是用户主动添加的）
+        // 兼容：恢复历史数组中的用户打点（旧逻辑）
         if (savedMarkersData.length > 0) {
           savedMarkersData.forEach((markerData) => {
-            // 使用保存的图标或根据图层ID获取图标
             const iconUrl = markerData.iconUrl || this.getIconByLayerId(markerData.layerId || 'hazard')
-            const icon = L.icon({
-              iconUrl: iconUrl,
-              iconSize: [32, 32],
-              iconAnchor: [16, 32],
-              popupAnchor: [0, -32],
-            })
-            
-            const marker = L.marker([markerData.lat, markerData.lng], {
-              icon: icon,
-            }).addTo(this.map)
-            
-            // 添加点击事件
+            const icon = L.icon({ iconUrl, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -32] })
+            const marker = L.marker([markerData.lat, markerData.lng], { icon }).addTo(this.map)
             marker.on('click', () => {
               if (this.ownerInstance && this.ownerInstance.callMethod) {
                 this.ownerInstance.callMethod('onMarkerConfirmed', markerData)
               }
             })
-            
-            // 保存标记
+            this.markers.push(marker)
+            if (markerData.layerId) {
+              this.markersByLayer[markerData.layerId] = marker
+              this.savedMarkersByLayerData[markerData.layerId] = markerData
+            }
+          })
+          console.log('恢复用户打点标记(历史):', savedMarkersData.length, '个')
+        }
+
+        // 新逻辑：按图层恢复用户打点（仅保留每图层一个）
+        const layerIds = Object.keys(this.savedMarkersByLayerData || {})
+        if (layerIds.length > 0) {
+          layerIds.forEach((layerId) => {
+            const md = this.savedMarkersByLayerData[layerId]
+            if (!md) return
+            const iconUrl = md.iconUrl || this.getIconByLayerId(layerId)
+            const icon = L.icon({ iconUrl, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -32] })
+            const marker = L.marker([md.lat, md.lng], { icon }).addTo(this.map)
+            marker.on('click', () => {
+              if (this.ownerInstance && this.ownerInstance.callMethod) {
+                this.ownerInstance.callMethod('onMarkerConfirmed', md)
+              }
+            })
+            this.markersByLayer[layerId] = marker
             this.markers.push(marker)
           })
-          console.log('恢复用户打点标记:', savedMarkersData.length, '个')
+          console.log('按图层恢复用户打点标记:', layerIds.length, '个图层')
         }
         
         // 恢复回显标记点
