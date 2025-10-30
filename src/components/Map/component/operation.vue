@@ -3,7 +3,7 @@
  * @Date: 2025-10-29 15:44:35
  * @Description: 
  * @FilePath: /unibest/src/components/Map/component/operation.vue
- * @LastEditTime: 2025-10-29 16:49:08
+ * @LastEditTime: 2025-10-30 15:26:35
  * @LastEditors: dahai chendahai777@gmail.com
 -->
 <script lang="ts" setup>
@@ -16,6 +16,7 @@ import MonitorImage from '../image/map-layer-jiankong.png'
 
 const props = defineProps<{
   defaultLayer?: string
+  layerList?: string[]
 }>()
 
 /** 图层列表 */
@@ -50,12 +51,9 @@ const defaultLayerList = [
 /** 全屏状态 */
 const isFullScreen = defineModel<boolean>('fullScreen', { default: false })
 
-const layerList = defineModel<string[]>('layerList', { default: () => ['risk', 'hazard', 'patrol'] })
-
-
 /** 图层列表 */
 const list = computed(() => {
-  return defaultLayerList.filter(item => layerList.value.includes(item.id))
+  return defaultLayerList.filter(item => props.layerList.includes(item.id))
 })
 
 /** 下拉菜单显示状态 */

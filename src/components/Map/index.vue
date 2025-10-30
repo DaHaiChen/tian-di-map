@@ -1,6 +1,3 @@
-<!--
- * @Description: 天地图组件 - 基于 Leaflet
--->
 <template>
   <view class="map-wrapper">
     <view id="map" ref="mapRef" :change:prop="leaflet.updateMap" :prop="mapConfig" />
@@ -22,8 +19,9 @@
       </view>
     </view>
 
-    <Operation v-model:layer-list="layerList" :defaultLayer="config.defaultLayer" v-model:full-screen="isFullScreen" v-model="selectedLayerId" />
-    <SelectDept @deptSelected="onDeptSelected" />
+    <Operation :layer-list="layerList" :defaultLayer="config.defaultLayer" v-model:full-screen="isFullScreen"
+      v-model="selectedLayerId" />
+    <SelectDept @deptSelected="onDeptSelected" :defaultDept="defaultDept" />
   </view>
 </template>
 
@@ -31,21 +29,17 @@
 import { onMounted, ref, watch, nextTick } from 'vue'
 import 'leaflet/dist/leaflet.css'
 import type { MarkerData, PolylineConfig, PolygonConfig, MapConfig } from './type'
+import type { LayerMarkersMap } from './type'
 import Operation from './component/operation.vue'
 import SelectDept from './component/selectDept.vue'
 import { formatData, parsePointToLatLng } from './hooks/utils'
 /** 全屏状态 */
 const isFullScreen = defineModel('fullScreen', { default: false })
 
-/** 图层列表 */
-const layerList = defineModel<string[]>('layerList', { default: () => ['risk', 'hazard', 'patrol'] })
-
 const props = withDefaults(defineProps<{
   config?: MapConfig
-  // 单个回显点位
-  marker?: MarkerData | null
-  // 批量回显点位
-  markers?: MarkerData[]
+  // 外部按图层传入的点位
+  layerMarkers?: LayerMarkersMap
   // 是否自动聚焦到点位
   autoFocus?: boolean
   // 线条配置
@@ -54,6 +48,8 @@ const props = withDefaults(defineProps<{
   polylines?: PolylineConfig[]
   // 清除所有标记和线条的触发器
   clearAll?: number
+  layerList: string[]
+  defaultDept?: string[]
 }>(), {
   config: () => ({
     latitude: 39.908823,
@@ -61,7 +57,17 @@ const props = withDefaults(defineProps<{
     zoom: 18,
     initialized: false,
   }),
+  layerList: () => ['risk', 'hazard', 'patrol'],
 })
+
+// 当外部 layerMarkers 更新时，刷新当前图层回显
+watch(() => props.layerMarkers, (newMap) => {
+  if (!newMap || !mapConfig.value?.initialized) return
+  const list = newMap[selectedLayerId.value] || []
+  mapConfig.value = list.length
+    ? { ...mapConfig.value, type: 'showMarkers', markersData: list, autoFocus: false }
+    : { ...mapConfig.value, type: 'clearDisplayMarkers' }
+}, { deep: true })
 
 /**
  * 定义组件事件
@@ -81,49 +87,6 @@ const isMarking = ref(false)
 
 /** 当前选中的图层ID */
 const selectedLayerId = ref<string>('hazard')
-
-/** 当前地图缩放层级 */
-const currentZoom = ref(props.config?.zoom || 8)
-
-/**
- * 监听单个点位变化
- */
-watch(() => props.marker, (newMarker) => {
-  if (newMarker) {
-    mapConfig.value = {
-      ...mapConfig.value,
-      type: 'showMarker',
-      markerData: newMarker,
-      autoFocus: props.autoFocus ?? true,
-    }
-  } else {
-    // 当 marker 变为 null 时，清除单个回显标记
-    mapConfig.value = {
-      ...mapConfig.value,
-      type: 'clearDisplayMarkers',
-    }
-  }
-}, { deep: true })
-
-/**
- * 监听批量点位变化
- */
-watch(() => props.markers, (newMarkers) => {
-  if (newMarkers && newMarkers.length > 0) {
-    mapConfig.value = {
-      ...mapConfig.value,
-      type: 'showMarkers',
-      markersData: newMarkers,
-      autoFocus: props.autoFocus ?? true,
-    }
-  } else {
-    // 当 markers 变为空数组时，清除所有回显标记
-    mapConfig.value = {
-      ...mapConfig.value,
-      type: 'clearDisplayMarkers',
-    }
-  }
-}, { deep: true })
 
 /**
  * 监听单条线变化
@@ -231,8 +194,8 @@ function toggleMarking() {
   }
   console.log(isMarking.value, 'isMarking.value');
   console.log('type:', isMarking.value ? 'enableMarking' : 'disableMarking');
-  
-  
+
+
 }
 
 /**
@@ -244,6 +207,10 @@ watch(() => selectedLayerId.value, (newLayerId) => {
       ...mapConfig.value,
       currentLayerId: newLayerId,
     }
+    const list = props.layerMarkers[newLayerId] || []
+    mapConfig.value = list.length
+      ? { ...mapConfig.value, type: 'showMarkers', markersData: list, autoFocus: true }
+      : { ...mapConfig.value, type: 'clearDisplayMarkers' }
   }
   console.log('[Map] selectedLayerId changed:', newLayerId)
 })
@@ -264,7 +231,7 @@ function onDeptSelected(data: { value: string[], selectedItems: any[], nodeData:
   const depPoint = data.nodeData.depPoint
   const latLng = parsePointToLatLng(depPoint)
   const arr = formatData(data.nodeData.areaChildren)
-  console.log('部门选择数据depPoint:', arr)
+  console.log('部门选择数据depPoint:', data.nodeData)
 
   // 将 arr 中的每一项的 geo 数据转换为多边形配置
   const polygons: PolygonConfig[] = arr.map((item: any) => {
@@ -288,17 +255,6 @@ function onDeptSelected(data: { value: string[], selectedItems: any[], nodeData:
     }
   }
 
-  // 更新地图配置，设置中心点和绘制多边形
-  if (latLng) {
-    mapConfig.value = {
-      ...mapConfig.value,
-      type: 'setCenter',
-      // parsePointToLatLng 返回的是 [lng, lat]，这里需要交换为 [lat, lng]
-      latitude: latLng[1],
-      longitude: latLng[0],
-    }
-  }
-
   // 如果有多边形数据，则绘制多边形
   if (polygons.length > 0) {
     mapConfig.value = {
@@ -306,6 +262,20 @@ function onDeptSelected(data: { value: string[], selectedItems: any[], nodeData:
       type: 'showPolygons',
       polygonsData: polygons,
     }
+  }
+
+  // 更新地图配置，设置中心点和绘制多边形
+  if (latLng.length) {
+    nextTick(() => {
+      mapConfig.value = {
+        ...mapConfig.value,
+        type: 'setCenter',
+        // parsePointToLatLng 返回的是 [lng, lat]，这里需要交换为 [lat, lng]
+        latitude: latLng[0],
+        longitude: latLng[1],
+        zoom: 18
+      }
+    })
   }
 }
 
@@ -427,8 +397,8 @@ export default {
           this.disableMarkingMode()
           console.log('[Map] updateMap -> disableMarking')
         }
-        // 更新当前图层ID（需要在 disableMarking 之后，避免干扰 disableMarking 的处理）
-        else if (newValue.currentLayerId && newValue.type !== 'disableMarking') {
+        // 更新当前图层ID：仅当没有显式的 type 指令时，避免拦截后续 typed 操作
+        else if (newValue.type === undefined && newValue.currentLayerId) {
           this.currentLayerId = newValue.currentLayerId
           console.log('[Map] updateMap -> currentLayerId changed:', this.currentLayerId)
         }
@@ -451,6 +421,43 @@ export default {
         else if (newValue.type === 'showPolygons') {
           this.savedMultiplePolygonsData = [...newValue.polygonsData]
           this.showMultiplePolygons(newValue.polygonsData)
+        }
+        else if (newValue.type === 'switchLayer') {
+          const targetLayerId = newValue.switchLayerId || this.currentLayerId
+          // 移除地图上所有已添加的用户打点（历史数组）
+          if (this.markers && this.markers.length > 0) {
+            this.markers.forEach(m => { try { this.map.removeLayer(m) } catch (e) {} })
+            this.markers = []
+          }
+          // 确保除目标图层外的 marker 都被移除
+          const allLayerIds = Object.keys(this.markersByLayer || {})
+          allLayerIds.forEach((layerId) => {
+            const mk = this.markersByLayer[layerId]
+            if (!mk) return
+            try { this.map.removeLayer(mk) } catch (e) {}
+          })
+          // 为目标图层恢复/创建 marker，并添加到地图与历史数组
+          let targetMarker = this.markersByLayer[targetLayerId]
+          if (!targetMarker) {
+            const md = this.savedMarkersByLayerData[targetLayerId]
+            if (md) {
+              const iconUrl = md.iconUrl || this.getIconByLayerId(targetLayerId)
+              const icon = L.icon({ iconUrl, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -32] })
+              targetMarker = L.marker([md.lat, md.lng], { icon }).addTo(this.map)
+              // 点击回传
+              targetMarker.on('click', () => {
+                if (this.ownerInstance && this.ownerInstance.callMethod) {
+                  this.ownerInstance.callMethod('onMarkerConfirmed', md)
+                }
+              })
+              this.markersByLayer[targetLayerId] = targetMarker
+            }
+          }
+          if (targetMarker) {
+            try { targetMarker.addTo(this.map) } catch (e) {}
+            this.markers.push(targetMarker)
+          }
+          console.log('[Map] switchLayer -> show only layer:', targetLayerId)
         }
         else if (newValue.type === 'clearDisplayMarkers') {
           console.log('触发 clearDisplayMarkers')
@@ -515,58 +522,6 @@ export default {
       // 恢复鼠标样式
       this.map.getContainer().style.cursor = ''
     },
-
-    /**
-     * 地图点击事件处理 - 已注释，改为在多边形点击事件中打点
-     */
-    // onMapClick(e) {
-    //   if (!this.isMarkingMode) return
-    //   const lat = e.latlng.lat
-    //   const lng = e.latlng.lng
-
-    //   // 创建标记点
-    //   const marker = L.marker([lat, lng], {
-    //     icon: L.divIcon({
-    //       className: 'custom-marker',
-    //       html: '<div style="font-size: 32px;">📍</div>',
-    //       iconSize: [32, 40],
-    //       iconAnchor: [16, 40],
-    //       popupAnchor: [0, -40],
-    //     }),
-    //   }).addTo(this.map)
-
-    //   // 添加弹窗
-    //   // marker.bindPopup(`
-    //   //   <div style="text-align: center; padding: 10px;">
-    //   //     <p style="margin: 0 0 8px; font-weight: bold;">标记点 #${this.markers.length + 1}</p>
-    //   //     <p style="margin: 4px 0;"><strong>经度:</strong> ${lng.toFixed(6)}</p>
-    //   //     <p style="margin: 4px 0;"><strong>纬度:</strong> ${lat.toFixed(6)}</p>
-    //   //     <button onclick="this.parentElement.parentElement.parentElement.style.display='none'" 
-    //   //             style="margin-top: 8px; padding: 4px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">
-    //   //       关闭
-    //   //     </button>
-    //   //   </div>
-    //   // `).openPopup()
-
-    //   // 保存标记原始数据（用于重新实例化后恢复）
-    //   const markerData = {
-    //     lat,
-    //     lng,
-    //     address: `经度: ${lng.toFixed(6)}, 纬度: ${lat.toFixed(6)}`,
-    //   }
-    //   this.savedMarkersData.push(markerData)
-      
-    //   // 保存标记
-    //   this.currentMarker = marker
-    //   this.markers.push(marker)
-    //   marker.on('click', () => {
-    //     if (this.ownerInstance && this.ownerInstance.callMethod) {
-    //       this.ownerInstance.callMethod('onMarkerConfirmed', markerData)
-    //     }
-    //   })
-    //   console.log('打点成功:', { lat, lng, 总标记数: this.markers.length })
-    // },
-
     /**
      * 根据图层ID获取对应的图标
      * @param {string} layerId - 图层ID
@@ -723,16 +678,6 @@ export default {
           }),
         }).addTo(this.map)
 
-        // 添加弹窗
-        const popupContent = markerData.popupContent || `
-          <div style="text-align: center; padding: 10px;">
-            <p style="margin: 0 0 8px; font-weight: bold;">${markerData.title || `标记点 #${index + 1}`}</p>
-            <p style="margin: 4px 0;"><strong>经度:</strong> ${markerData.lng.toFixed(6)}</p>
-            <p style="margin: 4px 0;"><strong>纬度:</strong> ${markerData.lat.toFixed(6)}</p>
-          </div>
-        `
-        marker.bindPopup(popupContent)
-
         // 添加点击事件
         marker.on('click', () => {
           this.ownerInstance.callMethod('onMarkerClick', markerData)
@@ -742,16 +687,9 @@ export default {
         this.displayMarkers.push(marker)
         bounds.push([markerData.lat, markerData.lng])
       })
-
-      // 自动聚焦到所有标记点
-      if (autoFocus && bounds.length > 0) {
-        if (bounds.length === 1) {
-          this.map.setView(bounds[0], 15)
-        } else {
-          this.map.fitBounds(bounds, { padding: [50, 50] })
-        }
-      }
-
+      console.log(markersData,'markersData', autoFocus, 'autoFocus');
+      // 只聚焦第一个点
+      this.map.setView([markersData[0].lat, markersData[0].lng], 15)
       console.log('批量回显标记点:', markersData.length, '个')
     },
 
@@ -952,16 +890,16 @@ export default {
         }
         
         // 收集边界点用于自动缩放
-        latlngs.forEach(latlng => {
-          bounds.push(latlng)
-        })
+        // latlngs.forEach(latlng => {
+        //   bounds.push(latlng)
+        // })
       })
 
       // 自动调整地图视图以包含所有多边形
-      if (bounds.length > 0) {
-        const boundsLatLng = L.latLngBounds(bounds)
-        this.map.fitBounds(boundsLatLng, { padding: [50, 50] })
-      }
+      // if (bounds.length > 0) {
+      //   const boundsLatLng = L.latLngBounds(bounds)
+      //   this.map.fitBounds(boundsLatLng, { padding: [50, 50] })
+      // }
 
       console.log('批量绘制多边形成功:', polygonsData.length, '个')
     },

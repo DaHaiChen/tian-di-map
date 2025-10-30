@@ -2,7 +2,7 @@
  * @Author: dahai chendahai777@gmail.com
  * @Date: 2025-10-10 17:53:19
  * @LastEditors: dahai chendahai777@gmail.com
- * @LastEditTime: 2025-10-29 09:44:19
+ * @LastEditTime: 2025-10-30 14:22:21
  * @FilePath: /unibest/src/pages/index/index.vue
  * @Description: 首页
 -->
@@ -33,16 +33,25 @@ function gotoMap2() {
     url: '/pages/test-component/index',
   })
 }
+
+function gotoRiskMap() {
+  uni.navigateTo({
+    url: '/pages/risk-map/index',
+  })
+}
 // #endregion
 </script>
 
 <template>
-  <view class="bg-white px-4 pt-2" :style="{ marginTop: `${safeAreaInsets?.top}px` }">
+  <view class="bg-white px-4 pt-2 flex flex-col gap-3" :style="{ marginTop: `${safeAreaInsets?.top}px` }">
     <wd-button @click="gotoMap">
-      地图
+      demo地图
     </wd-button>
     <wd-button @click="gotoMap2">
-      地图2
+      功能测试地图
+    </wd-button>
+    <wd-button @click="gotoRiskMap">
+      risk地图
     </wd-button>
   </view>
 </template>

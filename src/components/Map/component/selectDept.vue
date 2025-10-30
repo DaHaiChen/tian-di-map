@@ -3,26 +3,33 @@
  * @Date: 2025-10-29 15:22:58
  * @Description: 部门选择组件 - 三级联动（区域公司->农场->分场）
  * @FilePath: /unibest/src/components/Map/component/selectDept.vue
- * @LastEditTime: 2025-10-29 18:04:59
+ * @LastEditTime: 2025-10-30 15:01:00
  * @LastEditors: dahai chendahai777@gmail.com
 -->
 <script lang="ts" setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { convertDepartmentJSONToPickerFormat } from '../hooks/useAreaData'
 
 const emit = defineEmits(['deptSelected'])
 
-/**
- * 直接从 JSON 数据转换为 picker 格式（三级：区域公司->农场->分场）
- */
+const props = defineProps<{
+  defaultDept?: string[]
+}>()
+
 const pickerUtil = computed(() => {
   return convertDepartmentJSONToPickerFormat()
 })
-
-/**
- * 选中的值（数组形式，对应每一列：[区域公司ID, 农场ID, 分场ID]）
- */
 const selectValue = ref<string[]>([])
+
+// defaultDept 变化时，自动设置 selectValue 并自动触发 deptSelected 回显地块（仅 emit）
+watch(() => props.defaultDept, (newVal) => {
+  if (newVal && pickerUtil.value) {
+    selectValue.value = newVal
+    // 自动回显：选出对应节点，emit deptSelected
+    const nodeData = pickerUtil.value.getSelectedNodeData(newVal)
+    emit('deptSelected', { value: newVal, selectedItems: [], nodeData })
+  }
+}, { immediate: true, deep: true })
 
 /**
  * Picker 的 columns（二维数组）
@@ -38,7 +45,6 @@ function displayFormat(items: any[]) {
   if (!items || items.length === 0) {
     return '请选择部门'
   }
-  // 只返回最后一项的名称
   return items[items.length - 1]?.label || '请选择部门'
 }
 
@@ -49,8 +55,6 @@ function handleConfirm({ value, selectedItems }: any) {
   // 获取完整的节点数据
   if (pickerUtil.value) {
     const nodeData = pickerUtil.value.getSelectedNodeData(value)
-    console.log('选中的节点完整数据:', nodeData)
-    
     // 触发自定义事件，传递选中的部门信息
     emit('deptSelected', { value, selectedItems, nodeData })
   }

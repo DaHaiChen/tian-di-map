@@ -1,5 +1,6 @@
 import type { GeocodeResult } from './types'
 import { TK } from './config'
+import { MarkerData } from '../type'
 
 // 通过经纬度获取地址信息
 export const getAddressByCoordinates = async (lon: number, lat: number): Promise<GeocodeResult | null> => {
@@ -122,7 +123,7 @@ export function formatData(data: any[]) {
 
             // 获取第一个子地块（通常每个地块组只有一个子地块）
             const child = item.children[0]
-            
+
             // 检查是否存在地理坐标信息
             if (!child.soilInfoGeometry) {
                 console.warn(`formatData: 地块 ${index + 1} (${item.landLeardingName || '未知'}) 没有地理坐标数据`)
@@ -163,16 +164,16 @@ export function formatData(data: any[]) {
                 // 父地块信息
                 landLeardingNo: item.landLeardingNo,
                 landLeardingName: item.landLeardingName,
-                
+
                 // 子地块信息（优先使用）
                 soilLeardingNo: child.soilLeardingNo,
                 soilLeardingName: child.soilLeardingName,
                 locatedName: child.locatedName || item.locatedName, // 优先使用子地块的 locatedName
                 level: child.level,
-                
+
                 // 地理坐标（提取坐标点数组）
                 geo: coordinates,
-                
+
                 // 其他有用信息
                 soilInfoCollectArea: child.soilInfoCollectArea,
                 soilInfoLocationSituationName: child.soilInfoLocationSituationName,
@@ -191,4 +192,38 @@ export function formatData(data: any[]) {
 
     console.log(`formatData: 成功处理 ${result.length}/${data.length} 个地块`)
     return result
+}
+
+
+// 接口类型示例（可调整）
+interface ApiPoint {
+    coordinatesConfig: string
+    levelCode: string    // 点位级别
+    typeCode?: string    // 点位类型，可选
+    [key: string]: any
+}
+
+/**
+ * 将接口原始点列表转换为地图组件可用的 MarkerData 数组
+ * @param list 接口原始点数组
+ */
+export function convertApiPointsToMarkers(list: ApiPoint[]): any[] {
+    const arr = list
+        .map(item => {
+            if (!item.coordinatesConfig) return undefined
+            const [lngStr, latStr] = item.coordinatesConfig.split(',')
+            const lng = Number(lngStr)
+            const lat = Number(latStr)
+            if (isNaN(lng) || isNaN(lat)) return undefined
+            return {
+                lat,
+                lng,
+                level: item.levelCode || item.inherentRiskLevel,    // 点位级别
+                type: item.typeCode,      // 点位类型
+                ...item                   // 其它附加字段（如 id/title 等）
+            } as MarkerData
+        })
+        .filter(Boolean)
+        console.log(arr);
+    return arr
 }

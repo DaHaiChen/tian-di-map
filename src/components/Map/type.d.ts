@@ -2,7 +2,7 @@
  * @Author: dahai chendahai777@gmail.com
  * @Date: 2025-10-29 09:23:24
  * @LastEditors: dahai chendahai777@gmail.com
- * @LastEditTime: 2025-10-29 16:48:26
+ * @LastEditTime: 2025-10-30 13:49:04
  * @FilePath: /unibest/src/components/Map/type.d.ts
  * @Description: 
  */
@@ -64,3 +64,8 @@ export interface MapConfig {
   [key: string]: any
 }
 
+/**
+ * 外部按图层传入的点位映射
+ * key 为图层 id，value 为该图层的点位数组
+ */
+export type LayerMarkersMap = Record<string, MarkerData[]>
