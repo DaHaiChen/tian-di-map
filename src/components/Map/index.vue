@@ -614,26 +614,18 @@ export default {
       // 清除之前的回显标记
       this.clearDisplayMarkers()
 
-      // 创建标记点
-      const marker = L.marker([markerData.lat, markerData.lng], {
-        icon: L.divIcon({
-          className: 'display-marker',
-          html: markerData.icon || '<div style="font-size: 32px; color: #11998e;">📍</div>',
-          iconSize: [32, 40],
-          iconAnchor: [16, 40],
-          popupAnchor: [0, -40],
-        }),
+      const icon = L.icon({
+        iconUrl: this.getIconByLayerId(markerData.type),
+        iconSize: [32, 32], // 根据实际图标大小调整
+        iconAnchor: [16, 32], // 图标锚点（底部中心）
+        popupAnchor: [0, -32], // 弹窗锚点
+      })
+
+        // 创建标记点
+        const marker = L.marker([markerData.lat, markerData.lng], {
+        icon: icon,
       }).addTo(this.map)
 
-      // 添加弹窗
-      const popupContent = markerData.popupContent || `
-        <div style="text-align: center; padding: 10px;">
-          <p style="margin: 0 0 8px; font-weight: bold;">${markerData.title || '标记点'}</p>
-          <p style="margin: 4px 0;"><strong>经度:</strong> ${markerData.lng.toFixed(6)}</p>
-          <p style="margin: 4px 0;"><strong>纬度:</strong> ${markerData.lat.toFixed(6)}</p>
-        </div>
-      `
-      marker.bindPopup(popupContent)
 
       // 添加点击事件
       marker.on('click', () => {
@@ -666,17 +658,17 @@ export default {
       // 创建所有标记点
       markersData.forEach((markerData, index) => {
         if (!markerData.lat || !markerData.lng) return
+        const icon = L.icon({
+        iconUrl: this.getIconByLayerId(markerData.type),
+        iconSize: [32, 32], // 根据实际图标大小调整
+        iconAnchor: [16, 32], // 图标锚点（底部中心）
+        popupAnchor: [0, -32], // 弹窗锚点
+      })
 
         // 创建标记点
         const marker = L.marker([markerData.lat, markerData.lng], {
-          icon: L.divIcon({
-            className: 'display-marker',
-            html: markerData.icon || '<div style="font-size: 32px; color: #11998e;">📍</div>',
-            iconSize: [32, 40],
-            iconAnchor: [16, 40],
-            popupAnchor: [0, -40],
-          }),
-        }).addTo(this.map)
+        icon: icon,
+      }).addTo(this.map)
 
         // 添加点击事件
         marker.on('click', () => {
@@ -1163,7 +1155,6 @@ export default {
         })
       }, 100)
     },
-
     /**
      * 初始化地图
      * @param isReinit - 是否为重新初始化
