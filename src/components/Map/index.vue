@@ -22,7 +22,7 @@
       </view>
     </view>
 
-    <Operation v-model:layer-list="layerList" :defaultLayer="config.defaultLayer" v-model:full-screen="isFullScreen" />
+    <Operation v-model:layer-list="layerList" :defaultLayer="config.defaultLayer" v-model:full-screen="isFullScreen" v-model="selectedLayerId" />
     <SelectDept @deptSelected="onDeptSelected" />
   </view>
 </template>
@@ -78,6 +78,9 @@ const mapConfig = ref(props.config)
 
 // 打点模式状态
 const isMarking = ref(false)
+
+/** 当前选中的图层ID */
+const selectedLayerId = ref<string>('hazard')
 
 /** 当前地图缩放层级 */
 const currentZoom = ref(props.config?.zoom || 8)
@@ -224,8 +227,25 @@ function toggleMarking() {
   mapConfig.value = {
     ...mapConfig.value,
     type: isMarking.value ? 'enableMarking' : 'disableMarking',
+    currentLayerId: selectedLayerId.value, // 传递当前图层ID
   }
+  console.log(isMarking.value, 'isMarking.value');
+  console.log('type:', isMarking.value ? 'enableMarking' : 'disableMarking');
+  
+  
 }
+
+/**
+ * 监听图层ID变化，更新到地图配置中
+ */
+watch(() => selectedLayerId.value, (newLayerId) => {
+  if (mapConfig.value.initialized) {
+    mapConfig.value = {
+      ...mapConfig.value,
+      currentLayerId: newLayerId,
+    }
+  }
+})
 
 /**
  * 接收来自 renderjs 的标记数据
@@ -308,6 +328,16 @@ onMounted(() => {
  * 使用 Leaflet.js 加载天地图瓦片服务
  */
 import L from 'leaflet'
+import point_risk_critical from './image/point_risk_critical.png'
+import point_risk_high from './image/point_risk_high.png'
+import point_risk_ignore from './image/point_risk_ignore.png'
+import point_risk_low from './image/point_risk_low.png'
+import point_risk_medium from './image/point_risk_medium.png'
+import point_device_01 from './image/point_device_01.png'
+import point_device_02 from './image/point_device_02.png'
+import point_device_03 from './image/point_device_03.png'
+import point_hazard_01 from './image/point_hazard_01.png'
+import point_hazard_02 from './image/point_hazard_02.png'
 
 export default {
   data() {
@@ -323,6 +353,7 @@ export default {
       multiplePolygons: [], // 多个多边形
       polygonLabels: [], // 多边形标签（用于显示地块名称）
       isMarkingMode: false, // 是否处于打点模式
+      currentLayerId: 'hazard', // 当前选中的图层ID
       ownerInstance: null, // Vue 组件实例引用（用于回调）
       // 保存原始配置数据用于恢复
       savedMarkersData: [], // 保存的标记点原始数据
@@ -364,10 +395,18 @@ export default {
           }
         }
         else if (newValue.type === 'enableMarking') {
+          // 更新当前图层ID（如果传递了）
+          if (newValue.currentLayerId) {
+            this.currentLayerId = newValue.currentLayerId
+          }
           this.enableMarkingMode()
         }
         else if (newValue.type === 'disableMarking') {
           this.disableMarkingMode()
+        }
+        // 更新当前图层ID（需要在 disableMarking 之后，避免干扰 disableMarking 的处理）
+        else if (newValue.currentLayerId && newValue.type !== 'disableMarking') {
+          this.currentLayerId = newValue.currentLayerId
         }
         else if (newValue.type === 'showMarker') {
           this.savedDisplayMarkersData = [newValue.markerData]
@@ -504,26 +543,57 @@ export default {
     // },
 
     /**
+     * 根据图层ID获取对应的图标
+     * @param {string} layerId - 图层ID
+     * @returns {string} 图标URL
+     */
+    getIconByLayerId(layerId) {
+      // 图层ID到图标的映射关系
+      const iconMap = {
+        // 风险图层 - 默认使用高风险图标
+        'risk': point_risk_ignore,
+        // 隐患图层 - 默认使用第一个隐患图标
+        'hazard': point_hazard_01,
+        // 资产图层 - 使用第一个设备图标
+        'ziChan': point_risk_ignore,
+        // 监控图层 - 使用第二个设备图标
+        'monitor': point_device_01,
+        // 巡查图层 - 使用第三个设备图标
+        'patrol': point_risk_ignore,
+      }
+      
+      // 返回对应的图标，如果没有则返回默认图标
+      return iconMap[layerId] || point_hazard_01
+    },
+
+    /**
      * 创建标记点（用于在多边形点击事件中调用）
      * @param {number} lat - 纬度
      * @param {number} lng - 经度
      */
     createMarker(lat, lng) {
+      // 根据当前图层ID获取对应的图标
+      const iconUrl = this.getIconByLayerId(this.currentLayerId)
+      
+      // 创建图标
+      const icon = L.icon({
+        iconUrl: iconUrl,
+        iconSize: [32, 32], // 根据实际图标大小调整
+        iconAnchor: [16, 32], // 图标锚点（底部中心）
+        popupAnchor: [0, -32], // 弹窗锚点
+      })
+      
       // 创建标记点
       const marker = L.marker([lat, lng], {
-        icon: L.divIcon({
-          className: 'custom-marker',
-          html: '<div style="font-size: 32px;">📍</div>',
-          iconSize: [32, 40],
-          iconAnchor: [16, 40],
-          popupAnchor: [0, -40],
-        }),
+        icon: icon,
       }).addTo(this.map)
 
       // 保存标记原始数据（用于重新实例化后恢复）
       const markerData = {
         lat,
         lng,
+        layerId: this.currentLayerId, // 保存图层ID
+        iconUrl: iconUrl, // 保存图标URL
         address: `经度: ${lng.toFixed(6)}, 纬度: ${lat.toFixed(6)}`,
       }
       this.savedMarkersData.push(markerData)
@@ -793,27 +863,16 @@ export default {
 
         // 添加点击事件
         polygon.on('click', (e) => {
-          // 如果处于打点模式，则在点击位置打点
-          if (this.isMarkingMode) {
-            const lat = e.latlng.lat
-            const lng = e.latlng.lng
-            this.createMarker(lat, lng)
+          // 只有在打点模式下才执行操作
+          if (!this.isMarkingMode) {
+            // 非打点模式下，不执行任何操作
             return
           }
-
-          // 非打点模式下的原有逻辑（可选保留或删除）
-          // const collectiveBounds = L.latLngBounds(latlngs)
-          // const area = Math.abs(polygon.getBounds().getNorth() - polygon.getBounds().getSouth()) *
-          //             Math.abs(polygon.getBounds().getEast() - polygon.getBounds().getWest()) *
-          //             111000 * 111000 // 粗略计算面积（平方米）
           
-          // polygon.bindPopup(`
-          //   <div style="padding: 10px;">
-          //     <p style="margin: 4px 0;"><strong>${polygonConfig.title || `地块 #${index + 1}`}</strong></p>
-          //     <p style="margin: 4px 0;">顶点数量: ${latlngs.length}</p>
-          //     <p style="margin: 4px 0;">面积: ${(area / 10000).toFixed(2)} 公顷</p>
-          //   </div>
-          // `).openPopup()
+          // 如果处于打点模式，则在点击位置打点
+          const lat = e.latlng.lat
+          const lng = e.latlng.lng
+          this.createMarker(lat, lng)
         })
 
         // 保存多边形
@@ -1039,14 +1098,17 @@ export default {
         // 恢复用户打点的标记（优先恢复，因为这些是用户主动添加的）
         if (savedMarkersData.length > 0) {
           savedMarkersData.forEach((markerData) => {
+            // 使用保存的图标或根据图层ID获取图标
+            const iconUrl = markerData.iconUrl || this.getIconByLayerId(markerData.layerId || 'hazard')
+            const icon = L.icon({
+              iconUrl: iconUrl,
+              iconSize: [32, 32],
+              iconAnchor: [16, 32],
+              popupAnchor: [0, -32],
+            })
+            
             const marker = L.marker([markerData.lat, markerData.lng], {
-              icon: L.divIcon({
-                className: 'custom-marker',
-                html: '<div style="font-size: 32px;">📍</div>',
-                iconSize: [32, 40],
-                iconAnchor: [16, 40],
-                popupAnchor: [0, -40],
-              }),
+              icon: icon,
             }).addTo(this.map)
             
             // 添加点击事件
