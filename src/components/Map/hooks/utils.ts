@@ -39,7 +39,7 @@ export const getAddressByCoordinates = async (lon: number, lat: number): Promise
 }
 
 // 解析坐标字符串 "POINT (31.6243 121.652)" 转换为 [31.6243, 121.652]
-export const parsePointString = (pointStr: string): number[] => {
+export const parsePointToLatLng = (pointStr: string): number[] => {
     if (!pointStr || typeof pointStr !== 'string') {
         console.warn('parsePointString - 输入无效:', pointStr)
         return []

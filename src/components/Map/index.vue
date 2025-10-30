@@ -33,7 +33,7 @@ import 'leaflet/dist/leaflet.css'
 import type { MarkerData, PolylineConfig, PolygonConfig, MapConfig } from './type'
 import Operation from './component/operation.vue'
 import SelectDept from './component/selectDept.vue'
-import { formatData } from './hooks/utils'
+import { formatData, parsePointToLatLng } from './hooks/utils'
 /** 全屏状态 */
 const isFullScreen = defineModel('fullScreen', { default: false })
 
@@ -237,20 +237,6 @@ function onMarkerConfirmed(data: { lat: number, lng: number, address?: string })
   console.log('标记点数据:', data)
 }
 
-/**
- * 解析 POINT (lat lng) 字符串为 [lat, lng] 数组
- * @param {string} pointStr 示例: "POINT (31.6243 121.652)"
- * @returns {[number, number] | null}
- */
-function parsePointToLatLng(pointStr: string): [number, number] | null {
-  if (!pointStr) return null
-  const match = pointStr.match(/POINT\s*\(\s*(-?\d+(\.\d+)?)\s+(-?\d+(\.\d+)?)\s*\)/)
-  if (match) {
-    // 注意：WKT标准为 POINT (lat lng)
-    return [parseFloat(match[1]), parseFloat(match[3])]
-  }
-  return null
-}
 
 /** 选择部门 */
 function onDeptSelected(data: { value: string[], selectedItems: any[], nodeData: any }) {
@@ -292,6 +278,8 @@ function onDeptSelected(data: { value: string[], selectedItems: any[], nodeData:
   }
 }
 
+
+/** 调用方法 */
 function callMethod(type, params) {
   switch (type) {
     case 'onMarkerConfirmed':
@@ -299,8 +287,6 @@ function callMethod(type, params) {
       break
     case 'onMarkerClick':
       onMarkerClick(params)
-      break
-    default:
       break
   }
 }
@@ -375,10 +361,6 @@ export default {
             // 更新保存的中心点
             this.currentCenter = [newValue.latitude, newValue.longitude]
             this.currentZoom = zoom
-            console.log('设置地图中心点:', {
-              center: this.currentCenter,
-              zoom: this.currentZoom
-            })
           }
         }
         else if (newValue.type === 'enableMarking') {
@@ -447,11 +429,11 @@ export default {
      * 启用打点模式
      */
     enableMarkingMode() {
-      console.log('启用打点模式 - 点击地图进行标记')
+      console.log('启用打点模式 - 点击多边形进行标记')
       this.isMarkingMode = true
       
-      // 添加地图点击事件监听
-      this.map.on('click', this.onMapClick)
+      // 添加地图点击事件监听 - 已注释，改为在多边形点击事件中打点
+      // this.map.on('click', this.onMapClick)
       
       // 修改鼠标样式
       this.map.getContainer().style.cursor = 'crosshair'
@@ -463,23 +445,70 @@ export default {
     disableMarkingMode() {
       console.log('禁用打点模式')
       this.isMarkingMode = false
-      
-      // 移除地图点击事件监听
-      this.map.off('click', this.onMapClick)
+      // 移除地图点击事件监听 - 已注释，改为在多边形点击事件中打点
+      // this.map.off('click', this.onMapClick)
       
       // 恢复鼠标样式
       this.map.getContainer().style.cursor = ''
     },
 
     /**
-     * 地图点击事件处理
+     * 地图点击事件处理 - 已注释，改为在多边形点击事件中打点
      */
-    onMapClick(e) {
-      if (!this.isMarkingMode) return
+    // onMapClick(e) {
+    //   if (!this.isMarkingMode) return
+    //   const lat = e.latlng.lat
+    //   const lng = e.latlng.lng
 
-      const lat = e.latlng.lat
-      const lng = e.latlng.lng
+    //   // 创建标记点
+    //   const marker = L.marker([lat, lng], {
+    //     icon: L.divIcon({
+    //       className: 'custom-marker',
+    //       html: '<div style="font-size: 32px;">📍</div>',
+    //       iconSize: [32, 40],
+    //       iconAnchor: [16, 40],
+    //       popupAnchor: [0, -40],
+    //     }),
+    //   }).addTo(this.map)
 
+    //   // 添加弹窗
+    //   // marker.bindPopup(`
+    //   //   <div style="text-align: center; padding: 10px;">
+    //   //     <p style="margin: 0 0 8px; font-weight: bold;">标记点 #${this.markers.length + 1}</p>
+    //   //     <p style="margin: 4px 0;"><strong>经度:</strong> ${lng.toFixed(6)}</p>
+    //   //     <p style="margin: 4px 0;"><strong>纬度:</strong> ${lat.toFixed(6)}</p>
+    //   //     <button onclick="this.parentElement.parentElement.parentElement.style.display='none'" 
+    //   //             style="margin-top: 8px; padding: 4px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">
+    //   //       关闭
+    //   //     </button>
+    //   //   </div>
+    //   // `).openPopup()
+
+    //   // 保存标记原始数据（用于重新实例化后恢复）
+    //   const markerData = {
+    //     lat,
+    //     lng,
+    //     address: `经度: ${lng.toFixed(6)}, 纬度: ${lat.toFixed(6)}`,
+    //   }
+    //   this.savedMarkersData.push(markerData)
+      
+    //   // 保存标记
+    //   this.currentMarker = marker
+    //   this.markers.push(marker)
+    //   marker.on('click', () => {
+    //     if (this.ownerInstance && this.ownerInstance.callMethod) {
+    //       this.ownerInstance.callMethod('onMarkerConfirmed', markerData)
+    //     }
+    //   })
+    //   console.log('打点成功:', { lat, lng, 总标记数: this.markers.length })
+    // },
+
+    /**
+     * 创建标记点（用于在多边形点击事件中调用）
+     * @param {number} lat - 纬度
+     * @param {number} lng - 经度
+     */
+    createMarker(lat, lng) {
       // 创建标记点
       const marker = L.marker([lat, lng], {
         icon: L.divIcon({
@@ -490,19 +519,6 @@ export default {
           popupAnchor: [0, -40],
         }),
       }).addTo(this.map)
-
-      // 添加弹窗
-      // marker.bindPopup(`
-      //   <div style="text-align: center; padding: 10px;">
-      //     <p style="margin: 0 0 8px; font-weight: bold;">标记点 #${this.markers.length + 1}</p>
-      //     <p style="margin: 4px 0;"><strong>经度:</strong> ${lng.toFixed(6)}</p>
-      //     <p style="margin: 4px 0;"><strong>纬度:</strong> ${lat.toFixed(6)}</p>
-      //     <button onclick="this.parentElement.parentElement.parentElement.style.display='none'" 
-      //             style="margin-top: 8px; padding: 4px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">
-      //       关闭
-      //     </button>
-      //   </div>
-      // `).openPopup()
 
       // 保存标记原始数据（用于重新实例化后恢复）
       const markerData = {
@@ -555,8 +571,6 @@ export default {
 
       // 添加点击事件
       marker.on('click', () => {
-        console.log('xxxxx');
-        
           this.ownerInstance.callMethod('onMarkerClick', markerData)
       })
 
@@ -778,19 +792,28 @@ export default {
         const polygon = L.polygon(latlngs, options).addTo(this.map)
 
         // 添加点击事件
-        polygon.on('click', () => {
-          const collectiveBounds = L.latLngBounds(latlngs)
-          const area = Math.abs(polygon.getBounds().getNorth() - polygon.getBounds().getSouth()) *
-                      Math.abs(polygon.getBounds().getEast() - polygon.getBounds().getWest()) *
-                      111000 * 111000 // 粗略计算面积（平方米）
+        polygon.on('click', (e) => {
+          // 如果处于打点模式，则在点击位置打点
+          if (this.isMarkingMode) {
+            const lat = e.latlng.lat
+            const lng = e.latlng.lng
+            this.createMarker(lat, lng)
+            return
+          }
+
+          // 非打点模式下的原有逻辑（可选保留或删除）
+          // const collectiveBounds = L.latLngBounds(latlngs)
+          // const area = Math.abs(polygon.getBounds().getNorth() - polygon.getBounds().getSouth()) *
+          //             Math.abs(polygon.getBounds().getEast() - polygon.getBounds().getWest()) *
+          //             111000 * 111000 // 粗略计算面积（平方米）
           
-          polygon.bindPopup(`
-            <div style="padding: 10px;">
-              <p style="margin: 4px 0;"><strong>${polygonConfig.title || `地块 #${index + 1}`}</strong></p>
-              <p style="margin: 4px 0;">顶点数量: ${latlngs.length}</p>
-              <p style="margin: 4px 0;">面积: ${(area / 10000).toFixed(2)} 公顷</p>
-            </div>
-          `).openPopup()
+          // polygon.bindPopup(`
+          //   <div style="padding: 10px;">
+          //     <p style="margin: 4px 0;"><strong>${polygonConfig.title || `地块 #${index + 1}`}</strong></p>
+          //     <p style="margin: 4px 0;">顶点数量: ${latlngs.length}</p>
+          //     <p style="margin: 4px 0;">面积: ${(area / 10000).toFixed(2)} 公顷</p>
+          //   </div>
+          // `).openPopup()
         })
 
         // 保存多边形
@@ -821,7 +844,7 @@ export default {
           const label = L.marker(center, {
             icon: labelIcon,
             interactive: false, // 不可交互，避免阻挡点击
-            zIndexOffset: 1000, // 确保标签显示在多边形上方
+            zIndexOffset: 100, // 确保标签显示在多边形上方
           }).addTo(this.map)
           
           // 保存标签以便后续清除
@@ -956,9 +979,9 @@ export default {
      * 保存当前地图视图状态
      */
     saveMapViewState() {
+        console.log(this.map, 'this.map');
       if (this.map) {
         const center = this.map.getCenter()
-        console.log(this.map, 'this.map');
         
         this.currentCenter = [center.lat, center.lng]
         this.currentZoom = this.map.getZoom()
@@ -1322,6 +1345,19 @@ export default {
       font-weight: 500;
     }
   }
+}
+
+.current-layer {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  z-index: 999;
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: #333;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  user-select: none;
 }
 
 /* 打点提示 */
