@@ -114,6 +114,7 @@
     "@dcloudio/uni-quickapp-webview": "3.0.0-4070620250821001",
     "abortcontroller-polyfill": "^1.7.8",
     "alova": "^3.3.3",
+    "coordtransform": "^2.1.2",
     "dayjs": "1.11.10",
     "js-cookie": "^3.0.5",
     "leaflet": "^1.9.4",

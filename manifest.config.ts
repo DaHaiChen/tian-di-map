@@ -49,7 +49,9 @@ export default defineManifestConfig({
       delay: 0,
     },
     /* 模块配置 */
-    modules: {},
+    modules: {
+      Geolocation: {}, // 定位模块
+    },
     /* 应用发布信息 */
     distribute: {
       /* android打包配置 */
@@ -57,6 +59,14 @@ export default defineManifestConfig({
         minSdkVersion: 21,
         targetSdkVersion: 30,
         abiFilters: ['armeabi-v7a', 'arm64-v8a'],
+        // 隐私政策提示框配置（Android 必需）
+        privacyPrompts: {
+          enable: true,
+          title: '服务协议和隐私政策',
+          message: '请你务必审慎阅读、充分理解"服务协议"和"隐私政策"各条款，包括但不限于：为了更好的向你提供服务，我们需要收集你的设备标识、操作日志等信息用于分析、优化应用性能。<br/>你可阅读<a href="">《服务协议》</a>和<a href="">《隐私政策》</a>了解详细信息。如果你同意，请点击下面按钮开始接受我们的服务。',
+          buttonAccept: '同意',
+          buttonRefuse: '暂不同意',
+        },
         permissions: [
           '<uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>',
           '<uses-permission android:name="android.permission.MOUNT_UNMOUNT_FILESYSTEMS"/>',
@@ -73,12 +83,39 @@ export default defineManifestConfig({
           '<uses-permission android:name="android.permission.FLASHLIGHT"/>',
           '<uses-feature android:name="android.hardware.camera"/>',
           '<uses-permission android:name="android.permission.WRITE_SETTINGS"/>',
+          // 定位权限（必需）
+          '<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>',
+          '<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>',
+          // Android 10+ 后台定位权限（如需后台定位）
+          '<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>',
         ],
       },
       /* ios打包配置 */
       ios: {},
       /* SDK配置 */
-      sdkConfigs: {},
+      sdkConfigs: {
+        /* SDK配置 */
+        sdkConfigs: {
+          /* 定位 */
+          geolocation: {
+            amap: {
+              name: 'amapCcaOIunjz',
+              __platform__: ['android'],
+              appkey_ios: '',
+              appkey_android: 'f1f2f554f65e7f91a2a87e24e492d914',
+            },
+          },
+          /* 地图 */
+          maps: {
+            amap: {
+              name: 'amapCcaOIunjz',
+              __platform__: ['android'],
+              appkey_ios: '',
+              appkey_android: 'f1f2f554f65e7f91a2a87e24e492d914',
+            },
+          },
+        },
+      },
       /* 图标配置 */
       icons: {
         android: {

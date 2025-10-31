@@ -92,6 +92,9 @@ const selectedLayerId = ref<string>('hazard')
  * 监听单条线变化
  */
 watch(() => props.polyline, (newPolyline, oldPolyline) => {
+  // 确保地图已初始化
+  if (!mapConfig.value?.initialized) return
+  
   if (newPolyline && newPolyline.points && newPolyline.points.length >= 2) {
     mapConfig.value = {
       ...mapConfig.value,
@@ -105,12 +108,15 @@ watch(() => props.polyline, (newPolyline, oldPolyline) => {
       type: 'clearSinglePolyline',
     }
   }
-}, { deep: true })
+}, { deep: true, immediate: true })
 
 /**
  * 监听多条线变化
  */
 watch(() => props.polylines, (newPolylines, oldPolylines) => {
+  // 确保地图已初始化
+  if (!mapConfig.value?.initialized) return
+  
   if (newPolylines && newPolylines.length > 0) {
     mapConfig.value = {
       ...mapConfig.value,
@@ -124,7 +130,7 @@ watch(() => props.polylines, (newPolylines, oldPolylines) => {
       type: 'clearMultiplePolylines',
     }
   }
-}, { deep: true })
+}, { deep: true, immediate: true })
 
 /**
  * 监听清除所有触发
@@ -309,16 +315,21 @@ onMounted(() => {
  * 使用 Leaflet.js 加载天地图瓦片服务
  */
 import L from 'leaflet'
-import point_risk_critical from './image/point_risk_critical.png'
-import point_risk_high from './image/point_risk_high.png'
-import point_risk_ignore from './image/point_risk_ignore.png'
-import point_risk_low from './image/point_risk_low.png'
-import point_risk_medium from './image/point_risk_medium.png'
-import point_device_01 from './image/point_device_01.png'
-import point_device_02 from './image/point_device_02.png'
-import point_device_03 from './image/point_device_03.png'
-import point_hazard_01 from './image/point_hazard_01.png'
-import point_hazard_02 from './image/point_hazard_02.png'
+import coordtransform from 'coordtransform'
+
+// 图标路径映射（使用 static 目录）
+const ICON_PATHS = {
+  point_risk_critical: '/static/map-icons/point_risk_critical.png',
+  point_risk_high: '/static/map-icons/point_risk_high.png',
+  point_risk_ignore: '/static/map-icons/point_risk_ignore.png',
+  point_risk_low: '/static/map-icons/point_risk_low.png',
+  point_risk_medium: '/static/map-icons/point_risk_medium.png',
+  point_device_01: '/static/map-icons/point_device_01.png',
+  point_device_02: '/static/map-icons/point_device_02.png',
+  point_device_03: '/static/map-icons/point_device_03.png',
+  point_hazard_01: '/static/map-icons/point_hazard_01.png',
+  point_hazard_02: '/static/map-icons/point_hazard_02.png',
+}
 
 export default {
   data() {
@@ -531,19 +542,19 @@ export default {
       // 图层ID到图标的映射关系
       const iconMap = {
         // 风险图层 - 默认使用高风险图标
-        'risk': point_risk_ignore,
+        'risk': ICON_PATHS.point_risk_ignore,
         // 隐患图层 - 默认使用第一个隐患图标
-        'hazard': point_hazard_01,
+        'hazard': ICON_PATHS.point_hazard_01,
         // 资产图层 - 使用第一个设备图标
-        'ziChan': point_risk_ignore,
+        'ziChan': ICON_PATHS.point_risk_ignore,
         // 监控图层 - 使用第二个设备图标
-        'monitor': point_device_01,
+        'monitor': ICON_PATHS.point_device_01,
         // 巡查图层 - 使用第三个设备图标
-        'patrol': point_risk_ignore,
+        'patrol': ICON_PATHS.point_risk_ignore,
       }
       
       // 返回对应的图标，如果没有则返回默认图标
-      return iconMap[layerId] || point_hazard_01
+      return iconMap[layerId] || ICON_PATHS.point_hazard_01
     },
 
     /**
@@ -709,8 +720,13 @@ export default {
       // 只清除之前的单条线
       this.clearSinglePolyline()
 
-      // 转换点位格式
-      const latlngs = polylineConfig.points.map(p => [p.lat, p.lng])
+      // 转换点位格式，并将 GCJ-02 坐标转换为 WGS-84
+      const latlngs = polylineConfig.points.map(p => {
+        // coordtransform.gcj02towgs84(lng, lat) 返回 [lng, lat]
+        const [wgs84_lng, wgs84_lat] = coordtransform.gcj02towgs84(p.lng, p.lat)
+        console.log(`坐标转换: GCJ-02(${p.lng}, ${p.lat}) -> WGS-84(${wgs84_lng.toFixed(6)}, ${wgs84_lat.toFixed(6)})`)
+        return [wgs84_lat, wgs84_lng]
+      })
 
       // 创建线条配置
       const options = {
@@ -754,8 +770,12 @@ export default {
       polylinesData.forEach((polylineConfig, index) => {
         if (!polylineConfig.points || polylineConfig.points.length < 2) return
 
-        // 转换点位格式
-        const latlngs = polylineConfig.points.map(p => [p.lat, p.lng])
+        // 转换点位格式，并将 GCJ-02 坐标转换为 WGS-84
+        const latlngs = polylineConfig.points.map(p => {
+          // coordtransform.gcj02towgs84(lng, lat) 返回 [lng, lat]
+          const [wgs84_lng, wgs84_lat] = coordtransform.gcj02towgs84(p.lng, p.lat)
+          return [wgs84_lat, wgs84_lng]
+        })
 
         // 创建线条配置
         const options = {
@@ -1217,7 +1237,7 @@ export default {
           preferCanvas: true, // 优先使用Canvas渲染
         }).setView(initialView, initialZoom)
 
-        // 添加天地图影像图层 - 添加缓存和性能优化
+        // 添加天地图影像图层 - 使用 WGS-84 坐标系
         L.tileLayer(
           'https://t{s}.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=036825be613a859007fa3004c9e87ddf',
           {
@@ -1237,7 +1257,7 @@ export default {
           },
         ).addTo(this.map)
 
-        // 添加天地图标注图层 - 同样的优化
+        // 添加天地图标注图层 - 使用 WGS-84 坐标系
         L.tileLayer(
           'https://t{s}.tianditu.gov.cn/cia_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=036825be613a859007fa3004c9e87ddf',
           {
